@@ -1,14 +1,14 @@
 const cron = require('node-cron');
-const sendSMS = require('../services/smsService');
+const moment = require('moment-jalaali');
+const sendSMSPattern = require('../services/sendSMSPattern');
 
-module.exports = function (contract) {
+moment.loadPersian({ dialect: 'persian-modern' });
+
+const sentContracts = new Set(); // ذخیره قراردادهایی که پیام‌شون فرستاده شده
+
+module.exports = function scheduleDueDateSMS(contract) {
   if (!contract.dueDate) {
-    console.error(`❌ Contract ${contract._id} has no dueDate, skipping reminders`);
-    return;
-  }
-
-  if (!contract.checkNumber) {
-    console.error(`❌ Contract ${contract._id} has no checkNumber, skipping reminders`);
+    console.error(`❌ No dueDate for contract ${contract._id}`);
     return;
   }
 
@@ -18,35 +18,42 @@ module.exports = function (contract) {
     return;
   }
 
-  const reminders = [
-    { daysBefore: 10, text: `۱۰ روز مانده تا سررسید چک ${contract.checkNumber}` },
-    { daysBefore: 5, text: `۵ روز مانده تا سررسید چک ${contract.checkNumber}` },
-    { daysBefore: 3, text: `۳ روز مانده تا سررسید چک ${contract.checkNumber}` },
-    { daysAfter: 1, text: `چک شما پاس نشده است، لطفا به واحد مالی بندرعباس مال مراجعه فرمایید.` }
-  ];
+  // کلید یکتا برای این قرارداد
+  const key = contract._id.toString();
 
-  reminders.forEach(reminder => {
-    let targetDate = new Date(dueDate);
+  // اگر قبلا پیام ارسال شده باشه، کاری نکن
+  if (sentContracts.has(key)) {
+    console.log(`⚠️ SMS already sent for contract ${key}, skipping.`);
+    return;
+  }
 
-    if (reminder.daysBefore) {
-      targetDate.setDate(dueDate.getDate() - reminder.daysBefore);
-    } else if (reminder.daysAfter) {
-      targetDate.setDate(dueDate.getDate() + reminder.daysAfter);
-    }
+  // کرون تایم دقیق برای سررسید
+  const cronTime = `${dueDate.getMinutes()} ${dueDate.getHours()} ${dueDate.getDate()} ${dueDate.getMonth() + 1} *`;
 
-    if (isNaN(targetDate)) {
-      console.error(`❌ Invalid targetDate for reminder: ${reminder.text}`);
+  console.log(`⏰ Scheduling single dueDate SMS | Cron: ${cronTime} | Contract: ${key}`);
+
+  cron.schedule(cronTime, async () => {
+    // قبل ارسال، چک کنیم باز هم ارسال نشده باشه
+    if (sentContracts.has(key)) {
+      console.log(`⚠️ SMS already sent for contract ${key}, skipping inside cron.`);
       return;
     }
 
-    // کرون تایم دقیق
-    const cronTime = `${targetDate.getMinutes()} ${targetDate.getHours()} ${targetDate.getDate()} ${targetDate.getMonth() + 1} *`;
+    const m = moment(dueDate);
+    const jDay = m.format('dddd');    // روز جلالی مثل شنبه
+    const jMonth = m.format('jMMMM'); // ماه جلالی مثل مرداد
 
-    console.log(`✅ Scheduling cron: ${cronTime} => ${reminder.text}`);
+    const textCode = 1003;
+    const textData = [`تاریخ سررسید: ${jDay} ${jMonth}`]; // مثلا متن قابل ارسال (بسته به پترن شما)
 
-    cron.schedule(cronTime, () => {
-      console.log(`📤 Sending SMS to ${contract.tenantPhone}: ${reminder.text}`);
-      sendSMS(contract.tenantPhone, reminder.text);
-    });
+    console.log(`📤 Sending dueDate SMS | ${jDay} ${jMonth} | Contract ${key}`);
+
+    try {
+      await sendSMSPattern(contract.tenantPhone, textCode, textData);
+      sentContracts.add(key); // ثبت ارسال پیام برای جلوگیری از ارسال دوباره
+      console.log(`✅ SMS sent and marked as sent for contract ${key}`);
+    } catch (err) {
+      console.error(`❌ Error sending SMS for contract ${key}:`, err);
+    }
   });
 };

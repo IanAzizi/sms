@@ -27,7 +27,13 @@ mongoose.connect(process.env.MONGO_URI)
 
     // بعد از اتصال دیتابیس
     const contracts = await Contract.find();
-    contracts.forEach(scheduleReminders);
+
+contracts.forEach(contract => {
+  scheduleReminders(contract);
+  console.log(`📤 Reminder scheduled | To: ${contract.tenantPhone} | Check: ${contract.checkNumber} | Contract: ${contract._id}`);
+});
+
+
     console.log('✅ All reminders scheduled on server start.');
 
     // بعدش سرور بالا بیاد
