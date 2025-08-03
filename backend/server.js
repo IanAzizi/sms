@@ -15,7 +15,6 @@ app.use(cors({
   exposedHeaders: ['Authorization']
 }));
 
-// Routes
 app.use('/api/contracts', contractRoutes);
 app.use('/api/auth', authRoutes);
 
@@ -25,18 +24,15 @@ mongoose.connect(process.env.MONGO_URI)
   .then(async () => {
     console.log('✅ MongoDB Connected');
 
-    // بعد از اتصال دیتابیس
-    const contracts = await Contract.find();
+    const now = new Date();
+    const contracts = await Contract.find({ dueDate: { $gte: now } });
 
-contracts.forEach(contract => {
-  scheduleReminders(contract);
-  console.log(`📤 Reminder scheduled | To: ${contract.tenantPhone} | Check: ${contract.checkNumber} | Contract: ${contract._id}`);
-});
+    contracts.forEach(contract => {
+      scheduleReminders(contract);
+    });
 
+    console.log(`✅ All future reminders scheduled (${contracts.length})`);
 
-    console.log('✅ All reminders scheduled on server start.');
-
-    // بعدش سرور بالا بیاد
     app.listen(PORT, () => console.log(`🚀 Server running on ${PORT}`));
   })
   .catch(err => console.error('❌ MongoDB connection failed:', err));

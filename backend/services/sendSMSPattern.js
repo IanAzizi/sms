@@ -4,7 +4,7 @@ const qs = require('qs');
 module.exports = async function sendSMSPattern(to, patternCode, textData = []) {
   try {
     if (!Array.isArray(textData)) {
-      throw new Error('❌ textData must be an array!');
+      throw new Error('textData must be an array!');
     }
 
     const payload = {
@@ -15,12 +15,9 @@ module.exports = async function sendSMSPattern(to, patternCode, textData = []) {
       trySend: 3
     };
 
-    // دقیقا به این شکل درست:
     textData.forEach((val, idx) => {
       payload[`textData[${idx}]`] = val;
     });
-
-    console.log('✅ SMS Pattern Payload:', payload);
 
     const response = await axios.post(
       process.env.NABZKAR_URL,
@@ -33,7 +30,6 @@ module.exports = async function sendSMSPattern(to, patternCode, textData = []) {
       }
     );
 
-    console.log('📤 Fixed Pattern SMS | code', patternCode, '| Response:', response.data);
     return response.data;
 
   } catch (err) {

@@ -1,3 +1,4 @@
+// backend/services/smsService.js
 const axios = require('axios');
 const qs = require('qs');
 
@@ -10,7 +11,7 @@ module.exports = async function sendSMSPattern(to, patternCode, patternData = []
       receivers: to,
     //  trySend: 2
     };
-    
+
     // فقط اگر patternData داشته باشیم اضافه کنیم
     if (patternData.length > 0) {
       body.textData = patternData;

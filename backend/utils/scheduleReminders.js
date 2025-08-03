@@ -4,69 +4,62 @@ const sendSMSPattern = require('../services/sendSMSPattern');
 
 moment.loadPersian({ dialect: 'persian-modern' });
 
-const sentFlags = new Set(); // هر ارسال یکتا
+const sentFlags = new Set();
 
 module.exports = function scheduleReminders(contract) {
-  if (!contract.dueDate) {
-    console.error(`❌ No dueDate for contract ${contract._id}`);
-    return;
-  }
+  if (!contract.dueDate) return;
 
   const dueDate = new Date(contract.dueDate);
-  if (isNaN(dueDate)) {
-    console.error(`❌ Invalid dueDate for contract ${contract._id}`);
-    return;
-  }
+  if (isNaN(dueDate)) return;
 
   const reminders = [
     { daysBefore: 10, code: 1010 },
     { daysBefore: 5, code: 1011 },
     { daysBefore: 3, code: 1012 },
-    { daysAfter: 0, code: 1003 } // روز سررسید
   ];
 
   reminders.forEach(reminder => {
-    let targetDate = new Date(dueDate);
-    if (reminder.daysBefore) {
-      targetDate.setDate(dueDate.getDate() - reminder.daysBefore);
-    } else if (reminder.daysAfter !== undefined) {
-      targetDate.setDate(dueDate.getDate() + reminder.daysAfter);
+    const targetDate = new Date(dueDate);
+    targetDate.setDate(targetDate.getDate() - reminder.daysBefore);
+
+    // ساعت و دقیقه اجرای SMS در زمان محلی
+    const sendHourLocal = 12;   // 12 ظهر
+    const sendMinuteLocal = 50;
+
+    // UTC دقیق تنظیم کن
+    const localHour = sendHourLocal;
+    targetDate.setHours(localHour);
+    targetDate.setMinutes(sendMinuteLocal);
+    targetDate.setSeconds(0);
+    targetDate.setMilliseconds(0);
+
+    const now = new Date();
+    if (targetDate <= now) {
+      console.log(`⏭️ Skipped expired | ${contract.checkNumber} | ${reminder.code}`);
+      return;
     }
 
-    const cronTime = `${targetDate.getMinutes()} ${targetDate.getHours()} ${targetDate.getDate()} ${targetDate.getMonth() + 1} *`;
-
-    // کلید یکتا برای این هشدار
-    const key = `${contract._id}-${reminder.code}`;
-
-    console.log(`⏰ Scheduling SMS | Contract: ${contract._id} | Code: ${reminder.code} | When: ${targetDate} | Cron: ${cronTime}`);
+    // Cron هم در Local تعریف کن نه UTC
+    const cronTime = `${sendMinuteLocal} ${localHour} ${targetDate.getDate()} ${targetDate.getMonth() + 1} *`;
+    const flagKey = `${contract._id}-${reminder.code}`;
 
     cron.schedule(cronTime, async () => {
-      if (sentFlags.has(key)) {
-        console.log(`⚠️ Already sent | Key: ${key}`);
-        return;
-      }
+      if (sentFlags.has(flagKey)) return;
 
       const m = moment(targetDate);
       const jDay = m.format('dddd');
       const jMonth = m.format('jMMMM');
-
-      const textCode = reminder.code;
-
-      // فقط برای کد 1003 نیازی به دیتا نیست، بقیه پترن دارند
-      let textData = [];
-      if (textCode !== 1003) {
-        textData = [jDay, jMonth];
-      }
-
-      console.log(`📤 Sending Pattern SMS | Code: ${textCode} | To: ${contract.tenantPhone} | ${jDay} ${jMonth}`);
+      const textData = [jDay, jMonth];
 
       try {
-        await sendSMSPattern(contract.tenantPhone, textCode, textData);
-        sentFlags.add(key);
-        console.log(`✅ Pattern SMS sent & flagged | Key: ${key}`);
+        await sendSMSPattern(contract.tenantPhone, reminder.code, textData);
+        sentFlags.add(flagKey);
+        console.log(`✅ SMS sent | ${contract.checkNumber} | ${jDay} ${jMonth} | Pattern ${reminder.code}`);
       } catch (err) {
-        console.error(`❌ Pattern SMS failed | Key: ${key}`, err);
+        console.error(`❌ SMS failed | ${flagKey} |`, err);
       }
     });
+
+    console.log(`⏰ Reminder scheduled | ${contract.checkNumber} | Pattern ${reminder.code} | Runs at: ${targetDate.toString()}`);
   });
 };
