@@ -8,9 +8,9 @@ module.exports = async function sendSMSPattern(to, patternCode, patternData = []
       from: 'auto',
       textCode: patternCode,
       receivers: to,
-      trySend: 2
+    //  trySend: 2
     };
-
+    
     // فقط اگر patternData داشته باشیم اضافه کنیم
     if (patternData.length > 0) {
       body.textData = patternData;

@@ -35,9 +35,9 @@ router.post('/', auth, async (req, res) => {
     console.log('✅ Jalali:', jdayName, jmonthName);
 
     // پترن
-    const patternCode = 1002;
+    const patternCode = 1003;
     const textData = [jdayName, jmonthName];
-
+    
     // ارسال اس‌ام‌اس پترنی
     const result = await sendSMSPattern(tenantPhone, patternCode, textData);
     console.log(`✅ Contract created & Pattern SMS sent | Response:`, result);

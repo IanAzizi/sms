@@ -4,9 +4,9 @@ const sendSMSPattern = require('../services/sendSMSPattern');
 
 moment.loadPersian({ dialect: 'persian-modern' });
 
-const sentContracts = new Set(); // ذخیره قراردادهایی که پیام‌شون فرستاده شده
+const sentFlags = new Set(); // هر ارسال یکتا
 
-module.exports = function scheduleDueDateSMS(contract) {
+module.exports = function scheduleReminders(contract) {
   if (!contract.dueDate) {
     console.error(`❌ No dueDate for contract ${contract._id}`);
     return;
@@ -14,46 +14,59 @@ module.exports = function scheduleDueDateSMS(contract) {
 
   const dueDate = new Date(contract.dueDate);
   if (isNaN(dueDate)) {
-    console.error(`❌ Invalid dueDate for contract ${contract._id}: ${contract.dueDate}`);
+    console.error(`❌ Invalid dueDate for contract ${contract._id}`);
     return;
   }
 
-  // کلید یکتا برای این قرارداد
-  const key = contract._id.toString();
+  const reminders = [
+    { daysBefore: 10, code: 1010 },
+    { daysBefore: 5, code: 1011 },
+    { daysBefore: 3, code: 1012 },
+    { daysAfter: 0, code: 1003 } // روز سررسید
+  ];
 
-  // اگر قبلا پیام ارسال شده باشه، کاری نکن
-  if (sentContracts.has(key)) {
-    console.log(`⚠️ SMS already sent for contract ${key}, skipping.`);
-    return;
-  }
-
-  // کرون تایم دقیق برای سررسید
-  const cronTime = `${dueDate.getMinutes()} ${dueDate.getHours()} ${dueDate.getDate()} ${dueDate.getMonth() + 1} *`;
-
-  console.log(`⏰ Scheduling single dueDate SMS | Cron: ${cronTime} | Contract: ${key}`);
-
-  cron.schedule(cronTime, async () => {
-    // قبل ارسال، چک کنیم باز هم ارسال نشده باشه
-    if (sentContracts.has(key)) {
-      console.log(`⚠️ SMS already sent for contract ${key}, skipping inside cron.`);
-      return;
+  reminders.forEach(reminder => {
+    let targetDate = new Date(dueDate);
+    if (reminder.daysBefore) {
+      targetDate.setDate(dueDate.getDate() - reminder.daysBefore);
+    } else if (reminder.daysAfter !== undefined) {
+      targetDate.setDate(dueDate.getDate() + reminder.daysAfter);
     }
 
-    const m = moment(dueDate);
-    const jDay = m.format('dddd');    // روز جلالی مثل شنبه
-    const jMonth = m.format('jMMMM'); // ماه جلالی مثل مرداد
+    const cronTime = `${targetDate.getMinutes()} ${targetDate.getHours()} ${targetDate.getDate()} ${targetDate.getMonth() + 1} *`;
 
-    const textCode = 1003;
-    const textData = [`تاریخ سررسید: ${jDay} ${jMonth}`]; // مثلا متن قابل ارسال (بسته به پترن شما)
+    // کلید یکتا برای این هشدار
+    const key = `${contract._id}-${reminder.code}`;
 
-    console.log(`📤 Sending dueDate SMS | ${jDay} ${jMonth} | Contract ${key}`);
+    console.log(`⏰ Scheduling SMS | Contract: ${contract._id} | Code: ${reminder.code} | When: ${targetDate} | Cron: ${cronTime}`);
 
-    try {
-      await sendSMSPattern(contract.tenantPhone, textCode, textData);
-      sentContracts.add(key); // ثبت ارسال پیام برای جلوگیری از ارسال دوباره
-      console.log(`✅ SMS sent and marked as sent for contract ${key}`);
-    } catch (err) {
-      console.error(`❌ Error sending SMS for contract ${key}:`, err);
-    }
+    cron.schedule(cronTime, async () => {
+      if (sentFlags.has(key)) {
+        console.log(`⚠️ Already sent | Key: ${key}`);
+        return;
+      }
+
+      const m = moment(targetDate);
+      const jDay = m.format('dddd');
+      const jMonth = m.format('jMMMM');
+
+      const textCode = reminder.code;
+
+      // فقط برای کد 1003 نیازی به دیتا نیست، بقیه پترن دارند
+      let textData = [];
+      if (textCode !== 1003) {
+        textData = [jDay, jMonth];
+      }
+
+      console.log(`📤 Sending Pattern SMS | Code: ${textCode} | To: ${contract.tenantPhone} | ${jDay} ${jMonth}`);
+
+      try {
+        await sendSMSPattern(contract.tenantPhone, textCode, textData);
+        sentFlags.add(key);
+        console.log(`✅ Pattern SMS sent & flagged | Key: ${key}`);
+      } catch (err) {
+        console.error(`❌ Pattern SMS failed | Key: ${key}`, err);
+      }
+    });
   });
 };
